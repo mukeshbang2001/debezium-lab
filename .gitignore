@@ -38,9 +38,14 @@ connect.offsets
 
 # Build artifacts
 *.class
-*.jar
 target/
 
-# Keep plugins directory structure but ignore some contents
-# (Already have the plugins, so this is fine as-is)
+# Connector plugins (downloaded via download-connectors.sh)
+# Keep directory structure but ignore JAR files
+connect-plugins/**/*.jar
+connect-plugins/debezium-jdbc/
+connect-plugins/mongo-kafka/*.jar
+
+# Keep the directory but not the contents
+!connect-plugins/.gitkeep
 

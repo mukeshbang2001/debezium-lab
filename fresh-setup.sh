@@ -46,8 +46,22 @@ else
     echo -e "${YELLOW}⚠ jq not found (optional). Install with: brew install jq (macOS) or sudo apt-get install jq (Linux)${NC}"
 fi
 
+# Check and download connector plugins if needed
+echo -e "\n${YELLOW}Step 2: Checking connector plugins...${NC}"
+MONGO_JARS=$(find connect-plugins/mongo-kafka -name "*.jar" 2>/dev/null | wc -l | tr -d ' ')
+if [ "$MONGO_JARS" -lt 2 ]; then
+    echo -e "${YELLOW}⚠ Connector plugins not found. Downloading...${NC}"
+    ./download-connectors.sh
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ Failed to download connector plugins${NC}"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓ Connector plugins found ($MONGO_JARS JARs)${NC}"
+fi
+
 # Start Docker containers
-echo -e "\n${YELLOW}Step 2: Starting Docker containers...${NC}"
+echo -e "\n${YELLOW}Step 3: Starting Docker containers...${NC}"
 docker-compose up -d
 
 if [ $? -ne 0 ]; then
@@ -57,11 +71,11 @@ fi
 echo -e "${GREEN}✓ Docker containers started${NC}"
 
 # Wait for services to start
-echo -e "\n${YELLOW}Step 3: Waiting for services to start (20 seconds)...${NC}"
+echo -e "\n${YELLOW}Step 4: Waiting for services to start (20 seconds)...${NC}"
 sleep 20
 
 # Verify containers
-echo -e "\n${YELLOW}Step 4: Verifying containers...${NC}"
+echo -e "\n${YELLOW}Step 5: Verifying containers...${NC}"
 CONTAINERS=$(docker ps --format "{{.Names}}" | wc -l)
 if [ "$CONTAINERS" -lt 5 ]; then
     echo -e "${RED}✗ Not all containers are running. Expected 5, found $CONTAINERS${NC}"
@@ -73,7 +87,7 @@ echo -e "${GREEN}✓ All containers running:${NC}"
 docker ps --format "  - {{.Names}} ({{.Status}})"
 
 # Initialize MongoDB replica set
-echo -e "\n${YELLOW}Step 5: Initializing MongoDB replica set...${NC}"
+echo -e "\n${YELLOW}Step 6: Initializing MongoDB replica set...${NC}"
 docker exec mongodb mongosh --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})" > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
@@ -95,7 +109,7 @@ else
 fi
 
 # Wait for Kafka Connect
-echo -e "\n${YELLOW}Step 6: Waiting for Kafka Connect to be ready...${NC}"
+echo -e "\n${YELLOW}Step 7: Waiting for Kafka Connect to be ready...${NC}"
 RETRIES=0
 MAX_RETRIES=30
 
@@ -112,7 +126,7 @@ echo ""
 echo -e "${GREEN}✓ Kafka Connect is ready${NC}"
 
 # Register connectors
-echo -e "\n${YELLOW}Step 7: Registering connectors...${NC}"
+echo -e "\n${YELLOW}Step 8: Registering connectors...${NC}"
 
 # Delete old connectors if they exist
 curl -s -X DELETE http://localhost:8083/connectors/mongo-source > /dev/null 2>&1
@@ -150,7 +164,7 @@ fi
 sleep 5
 
 # Check connector status
-echo -e "\n${YELLOW}Step 8: Checking connector status...${NC}"
+echo -e "\n${YELLOW}Step 9: Checking connector status...${NC}"
 
 SOURCE_STATUS=$(curl -s http://localhost:8083/connectors/mongo-source/status 2>/dev/null | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
 SINK_STATUS=$(curl -s http://localhost:8083/connectors/mongo-audit-history/status 2>/dev/null | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -168,7 +182,7 @@ else
 fi
 
 # Run test
-echo -e "\n${YELLOW}Step 9: Running test...${NC}"
+echo -e "\n${YELLOW}Step 10: Running test...${NC}"
 
 echo "  Inserting test document..."
 docker exec mongodb mongosh shop --quiet --eval \
