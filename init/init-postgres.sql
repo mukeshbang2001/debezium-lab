@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS mongo_audit (
+    id SERIAL PRIMARY KEY,
+    op VARCHAR(10),
+    document JSONB,
+    ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+

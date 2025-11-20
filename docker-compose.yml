@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb
+    command: --replSet rs0 --bind_ip_all
+    volumes:
+      - ./init:/init
+    ports:
+      - "27017:27017"
+
+  postgres:
+    image: debezium/postgres:15
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: auditdb
+    volumes:
+      - ./init/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  connect:
+    image: debezium/connect:2.7.0.Final
+    container_name: connect
+    ports:
+      - "8083:8083"
+    depends_on:
+      - kafka
+      - postgres
+      - mongodb
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=connect_configs
+      - OFFSET_STORAGE_TOPIC=connect_offsets
+      - STATUS_STORAGE_TOPIC=connect_statuses
+      - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - ENABLE_DEBEZIUM_SCRIPTING=true
+    volumes:
+      - ./connect-plugins:/kafka/connect
+

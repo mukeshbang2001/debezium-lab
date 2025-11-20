@@ -1,0 +1,25 @@
+{
+  "name": "mongo-audit-history",
+  "config": {
+    "connector.class": "com.mongodb.kafka.connect.MongoSinkConnector",
+    "tasks.max": "1",
+
+    "connection.uri": "mongodb://mongodb:27017/?replicaSet=rs0",
+
+    "database": "auditdb",
+    "collection": "changes",
+
+    "topics": "mongo.shop.customers",
+
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false",
+
+    "field.projection.type": "blocklist",
+    "field.projection.list": "_id",
+    
+    "writemodel.strategy": "com.mongodb.kafka.connect.sink.writemodel.strategy.InsertOneDefaultStrategy"
+  }
+}
+

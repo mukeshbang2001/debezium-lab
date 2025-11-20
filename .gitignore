@@ -1,0 +1,46 @@
+# Docker volumes and data
+/data/
+/volumes/
+
+# Temporary files
+/tmp/
+*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Node modules (if any)
+node_modules/
+
+# Python (if any)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# Kafka Connect offsets and data
+connect.offsets
+
+# Build artifacts
+*.class
+*.jar
+target/
+
+# Keep plugins directory structure but ignore some contents
+# (Already have the plugins, so this is fine as-is)
+

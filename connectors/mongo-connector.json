@@ -1,0 +1,12 @@
+{
+  "name": "mongo-cdc",
+  "config": {
+    "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
+    "mongodb.connection.string": "mongodb://mongodb:27017/?replicaSet=rs0",
+    "mongodb.name": "shop",
+    "collection.include.list": "shop.customers",
+    "capture.mode": "changes",
+    "topic.prefix": "mongo"
+  }
+}
+

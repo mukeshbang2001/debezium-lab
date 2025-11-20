@@ -1,0 +1,25 @@
+{
+  "name": "mongo-source",
+  "config": {
+    "connector.class": "com.mongodb.kafka.connect.MongoSourceConnector",
+    "tasks.max": "1",
+    
+    "connection.uri": "mongodb://mongodb:27017/?replicaSet=rs0",
+    
+    "database": "shop",
+    "collection": "customers",
+    
+    "topic.prefix": "",
+    "topic.namespace.map": "{\"shop.customers\": \"mongo.shop.customers\"}",
+    
+    "publish.full.document.only": "false",
+    "copy.existing": "false",
+    "change.stream.full.document": "updateLookup",
+    
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false"
+  }
+}
+

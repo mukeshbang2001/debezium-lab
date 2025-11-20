@@ -1,0 +1,26 @@
+{
+  "name": "postgres-audit-sink",
+  "config": {
+    "connector.class": "io.debezium.connector.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    
+    "topics": "mongo.shop.customers",
+    
+    "connection.url": "jdbc:postgresql://postgres:5432/auditdb",
+    "connection.username": "test",
+    "connection.password": "test",
+    
+    "insert.mode": "insert",
+    "delete.enabled": "false",
+    "primary.key.mode": "none",
+    
+    "schema.evolution": "basic",
+    "table.name.format": "audit_events",
+    
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "true",
+    "value.converter.schemas.enable": "true"
+  }
+}
+
