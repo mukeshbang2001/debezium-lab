@@ -1,5 +1,8 @@
 version: "3.8"
 
+# Docker Compose for using EXTERNAL MongoDB (via Homebrew)
+# MongoDB runs on host machine, not in Docker
+
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -17,14 +20,8 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
-  mongodb:
-    image: mongo:6.0
-    container_name: mongodb
-    command: --replSet rs0 --bind_ip_all
-    volumes:
-      - ./init:/init
-    ports:
-      - "27017:27017"
+  # MongoDB NOT included - using Homebrew installation on host
+  # MongoDB connection: host.docker.internal:27017
 
   postgres:
     image: debezium/postgres:15
@@ -45,7 +42,6 @@ services:
     depends_on:
       - kafka
       - postgres
-      - mongodb
     environment:
       - BOOTSTRAP_SERVERS=kafka:9092
       - GROUP_ID=1
@@ -57,4 +53,6 @@ services:
       - ENABLE_DEBEZIUM_SCRIPTING=true
     volumes:
       - ./connect-plugins:/kafka/connect
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 

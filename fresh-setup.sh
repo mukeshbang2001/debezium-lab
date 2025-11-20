@@ -1,21 +1,20 @@
 #!/bin/bash
 
-# Fresh Setup Script for Debezium Lab
-# Run this on a new machine to set up everything from scratch
+# Fresh Setup Script for Debezium Lab with Homebrew MongoDB
+# Use this when MongoDB is installed via Homebrew, not Docker
 
-set -e  # Exit on error
+set -e
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${BLUE}"
 echo "================================================"
-echo "  Debezium Lab - Fresh Setup"
-echo "  MongoDB CDC with Audit Trail (DIFFS Capture)"
+echo "  Debezium Lab - Fresh Setup (Homebrew MongoDB)"
 echo "================================================"
 echo -e "${NC}"
 
@@ -28,7 +27,7 @@ if ! command -v docker &> /dev/null; then
 fi
 echo -e "${GREEN}✓ Docker found: $(docker --version)${NC}"
 
-# Check for docker compose (supports both old and new syntax)
+# Check for docker compose
 if docker compose version &> /dev/null; then
     DOCKER_COMPOSE="docker compose"
     echo -e "${GREEN}✓ Docker Compose found: $(docker compose version)${NC}"
@@ -36,86 +35,83 @@ elif command -v docker-compose &> /dev/null; then
     DOCKER_COMPOSE="docker-compose"
     echo -e "${GREEN}✓ Docker Compose found: $(docker-compose --version)${NC}"
 else
-    echo -e "${RED}✗ Docker Compose not found. Please install Docker Desktop.${NC}"
+    echo -e "${RED}✗ Docker Compose not found.${NC}"
     exit 1
 fi
 
-if ! command -v curl &> /dev/null; then
-    echo -e "${RED}✗ curl not found. Please install curl first.${NC}"
+if ! command -v mongosh &> /dev/null; then
+    echo -e "${RED}✗ MongoDB Shell not found. Please install MongoDB via Homebrew.${NC}"
+    echo "  brew tap mongodb/brew"
+    echo "  brew install mongodb-community@7.0"
     exit 1
 fi
-echo -e "${GREEN}✓ curl found${NC}"
+echo -e "${GREEN}✓ MongoDB Shell found${NC}"
 
-if command -v jq &> /dev/null; then
-    echo -e "${GREEN}✓ jq found (optional but helpful)${NC}"
+# Check MongoDB is running
+echo -e "\n${YELLOW}Step 2: Checking Homebrew MongoDB...${NC}"
+
+if ! mongosh --quiet --eval "db.version()" localhost:27017 > /dev/null 2>&1; then
+    echo -e "${RED}✗ MongoDB is not running on localhost:27017${NC}"
+    echo ""
+    echo "Please start MongoDB:"
+    echo "  brew services start mongodb-community"
+    echo ""
+    echo "Or run the MongoDB setup script:"
+    echo "  ./setup-brew-mongo.sh"
+    exit 1
+fi
+
+MONGO_VERSION=$(mongosh --quiet --eval "db.version()" localhost:27017)
+echo -e "${GREEN}✓ MongoDB ${MONGO_VERSION} is running${NC}"
+
+# Check replica set
+RS_STATUS=$(mongosh --quiet --eval "try { rs.status().members[0].stateStr } catch(e) { 'NOT_INITIALIZED' }" localhost:27017)
+if [ "$RS_STATUS" != "PRIMARY" ] && [ "$RS_STATUS" != "SECONDARY" ]; then
+    echo -e "${YELLOW}⚠ MongoDB replica set not initialized${NC}"
+    echo "Initializing replica set..."
+    mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})" localhost:27017
+    sleep 10
+    echo -e "${GREEN}✓ Replica set initialized${NC}"
 else
-    echo -e "${YELLOW}⚠ jq not found (optional). Install with: brew install jq (macOS) or sudo apt-get install jq (Linux)${NC}"
+    echo -e "${GREEN}✓ Replica set is ${RS_STATUS}${NC}"
 fi
 
-# Check and download connector plugins if needed
-echo -e "\n${YELLOW}Step 2: Checking connector plugins...${NC}"
+# Check connector plugins
+echo -e "\n${YELLOW}Step 3: Checking connector plugins...${NC}"
 MONGO_JARS=$(find connect-plugins/mongo-kafka -name "*.jar" 2>/dev/null | wc -l | tr -d ' ')
 if [ "$MONGO_JARS" -lt 2 ]; then
     echo -e "${YELLOW}⚠ Connector plugins not found. Downloading...${NC}"
     ./download-connectors.sh
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}✗ Failed to download connector plugins${NC}"
-        exit 1
-    fi
 else
-    echo -e "${GREEN}✓ Connector plugins found ($MONGO_JARS JARs)${NC}"
+    echo -e "${GREEN}✓ Connector plugins found${NC}"
 fi
 
-# Start Docker containers
-echo -e "\n${YELLOW}Step 3: Starting Docker containers...${NC}"
+# Start Docker containers (without MongoDB)
+echo -e "\n${YELLOW}Step 4: Starting Docker services (Kafka, Postgres, Connect)...${NC}"
 $DOCKER_COMPOSE up -d
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}✗ Failed to start Docker containers${NC}"
     exit 1
 fi
-echo -e "${GREEN}✓ Docker containers started${NC}"
+echo -e "${GREEN}✓ Docker services started${NC}"
 
-# Wait for services to start
-echo -e "\n${YELLOW}Step 4: Waiting for services to start (20 seconds)...${NC}"
+# Wait for services
+echo -e "\n${YELLOW}Step 5: Waiting for services to start (20 seconds)...${NC}"
 sleep 20
 
 # Verify containers
-echo -e "\n${YELLOW}Step 5: Verifying containers...${NC}"
+echo -e "\n${YELLOW}Step 6: Verifying containers...${NC}"
 CONTAINERS=$(docker ps --format "{{.Names}}" | wc -l)
-if [ "$CONTAINERS" -lt 5 ]; then
-    echo -e "${RED}✗ Not all containers are running. Expected 5, found $CONTAINERS${NC}"
-    echo "Running containers:"
+if [ "$CONTAINERS" -lt 4 ]; then
+    echo -e "${RED}✗ Not all containers are running. Expected 4, found $CONTAINERS${NC}"
     docker ps --format "table {{.Names}}\t{{.Status}}"
     exit 1
 fi
-echo -e "${GREEN}✓ All containers running:${NC}"
-docker ps --format "  - {{.Names}} ({{.Status}})"
-
-# Initialize MongoDB replica set
-echo -e "\n${YELLOW}Step 6: Initializing MongoDB replica set...${NC}"
-docker exec mongodb mongosh --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})" > /dev/null 2>&1
-
-if [ $? -ne 0 ]; then
-    echo -e "${YELLOW}⚠ Replica set might already be initialized, checking status...${NC}"
-fi
-
-# Wait for replica set initialization
-echo -e "${YELLOW}Waiting for replica set to initialize (10 seconds)...${NC}"
-sleep 10
-
-# Verify replica set
-RS_STATUS=$(docker exec mongodb mongosh --quiet --eval "rs.status().members[0].stateStr" 2>/dev/null || echo "UNKNOWN")
-if [ "$RS_STATUS" = "PRIMARY" ]; then
-    echo -e "${GREEN}✓ MongoDB replica set initialized (PRIMARY)${NC}"
-else
-    echo -e "${RED}✗ MongoDB replica set status: $RS_STATUS${NC}"
-    echo "This might cause issues. Try running:"
-    echo "  docker exec mongodb mongosh --eval \"rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})\""
-fi
+echo -e "${GREEN}✓ All containers running${NC}"
 
 # Wait for Kafka Connect
-echo -e "\n${YELLOW}Step 7: Waiting for Kafka Connect to be ready...${NC}"
+echo -e "\n${YELLOW}Step 7: Waiting for Kafka Connect...${NC}"
 RETRIES=0
 MAX_RETRIES=30
 
@@ -134,12 +130,10 @@ echo -e "${GREEN}✓ Kafka Connect is ready${NC}"
 # Register connectors
 echo -e "\n${YELLOW}Step 8: Registering connectors...${NC}"
 
-# Delete old connectors if they exist
 curl -s -X DELETE http://localhost:8083/connectors/mongo-source > /dev/null 2>&1
 curl -s -X DELETE http://localhost:8083/connectors/mongo-audit-history > /dev/null 2>&1
 sleep 2
 
-# Register MongoDB Source
 echo -n "  Registering MongoDB Source Connector... "
 RESPONSE=$(curl -s -X POST http://localhost:8083/connectors \
   -H "Content-Type: application/json" \
@@ -154,7 +148,6 @@ fi
 
 sleep 3
 
-# Register MongoDB Audit Sink
 echo -n "  Registering MongoDB Audit Sink Connector... "
 RESPONSE=$(curl -s -X POST http://localhost:8083/connectors \
   -H "Content-Type: application/json" \
@@ -191,25 +184,28 @@ fi
 echo -e "\n${YELLOW}Step 10: Running test...${NC}"
 
 echo "  Inserting test document..."
-docker exec mongodb mongosh shop --quiet --eval \
-  'db.customers.insertOne({_id: 1, name: "Mukesh", location: "Hyd", department: "Engineering"})' > /dev/null
+mongosh --quiet --eval \
+  'use shop; db.customers.insertOne({_id: 1, name: "Mukesh", location: "Hyd", department: "Engineering"})' \
+  localhost:27017 > /dev/null
 
 sleep 3
 
 echo "  Updating document (name change)..."
-docker exec mongodb mongosh shop --quiet --eval \
-  'db.customers.updateOne({_id: 1}, {$set: {name: "Ritu"}})' > /dev/null
+mongosh --quiet --eval \
+  'use shop; db.customers.updateOne({_id: 1}, {$set: {name: "Ritu"}})' \
+  localhost:27017 > /dev/null
 
 sleep 3
 
 echo "  Updating document (location change)..."
-docker exec mongodb mongosh shop --quiet --eval \
-  'db.customers.updateOne({_id: 1}, {$set: {location: "Bangalore", department: "Sales"}})' > /dev/null
+mongosh --quiet --eval \
+  'use shop; db.customers.updateOne({_id: 1}, {$set: {location: "Bangalore", department: "Sales"}})' \
+  localhost:27017 > /dev/null
 
 sleep 3
 
 # Check audit trail
-AUDIT_COUNT=$(docker exec mongodb mongosh auditdb --quiet --eval 'db.changes.countDocuments({"documentKey._id": 1})' 2>/dev/null || echo "0")
+AUDIT_COUNT=$(mongosh --quiet --eval 'use auditdb; db.changes.countDocuments({"documentKey._id": 1})' localhost:27017 2>/dev/null || echo "0")
 
 if [ "$AUDIT_COUNT" -ge 3 ]; then
     echo -e "${GREEN}✓ Audit trail has $AUDIT_COUNT events${NC}"
@@ -219,7 +215,8 @@ fi
 
 # Show audit trail
 echo -e "\n${BLUE}=== Audit Trail (showing DIFFS) ===${NC}"
-docker exec mongodb mongosh auditdb --quiet --eval '
+mongosh --quiet --eval '
+use auditdb;
 db.changes.find({"documentKey._id": 1}).sort({clusterTime: 1}).forEach(function(doc) {
   print("\n--- " + doc.operationType.toUpperCase() + " ---");
   print("Time: " + doc.wallTime);
@@ -231,7 +228,7 @@ db.changes.find({"documentKey._id": 1}).sort({clusterTime: 1}).forEach(function(
     print("Full Document After: " + JSON.stringify(doc.fullDocument));
   }
 });
-'
+' localhost:27017
 
 # Summary
 echo -e "\n${BLUE}"
@@ -243,22 +240,14 @@ echo -e "${NC}"
 echo -e "${GREEN}✅ All systems operational!${NC}"
 echo ""
 echo "What's working:"
-echo "  ✓ MongoDB Source Connector - Capturing change events"
-echo "  ✓ Kafka Topic (mongo.shop.customers) - Streaming events"
+echo "  ✓ Homebrew MongoDB (localhost:27017) - Replica set initialized"
+echo "  ✓ Kafka streaming - Events flowing"
 echo "  ✓ MongoDB Audit Sink - Writing audit trail"
 echo "  ✓ Audit trail captures ONLY changed fields (DIFFS)"
 echo ""
 echo "Quick commands:"
-echo "  - View all connectors:  curl -s http://localhost:8083/connectors | jq ."
-echo "  - Check status:         curl -s http://localhost:8083/connectors/mongo-source/status | jq ."
-echo "  - View audit trail:     docker exec mongodb mongosh auditdb --eval 'db.changes.find().pretty()'"
-echo "  - Run test:             ./test-flow.sh"
-echo ""
-echo "Documentation:"
-echo "  - README.md - Complete guide"
-echo "  - TROUBLESHOOTING.md - Troubleshooting guide"
-echo "  - WORKING-SOLUTION.md - Technical details"
-echo ""
-echo -e "${YELLOW}Note: Postgres sink is not configured (incompatible with MongoDB Change Streams)${NC}"
+echo "  - View audit trail:  mongosh localhost:27017/auditdb --eval 'db.changes.find().pretty()'"
+echo "  - MongoDB status:    brew services list | grep mongodb"
+echo "  - Connector status:  curl -s http://localhost:8083/connectors | jq ."
 echo ""
 

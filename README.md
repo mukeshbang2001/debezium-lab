@@ -1,5 +1,8 @@
 # Debezium Lab - MongoDB CDC with Audit Trail (DIFFS Capture)
 
+> **Note:** This branch uses **Homebrew MongoDB** instead of Docker MongoDB.
+> For Docker MongoDB setup, see `main` branch.
+
 ## ✅ What's Working
 
 This project captures **MongoDB change events with DIFFS** and stores them in an audit trail.
@@ -33,50 +36,50 @@ MongoDB (auditdb.changes)
 
 ## Quick Start (Fresh Setup)
 
-### 1. Start Docker Containers
+### Prerequisites
 
+1. **Install MongoDB via Homebrew:**
 ```bash
-cd /path/to/debezium-lab
-docker-compose up -d
+brew tap mongodb/brew
+brew install mongodb-community@7.0
 ```
 
-**Wait ~20 seconds** for all services to be ready.
+2. **Docker Desktop** installed
 
-### 2. Verify Services
+### Setup Steps
 
-```bash
-docker ps
-```
-
-You should see:
-- `zookeeper`
-- `kafka`
-- `mongodb`
-- `postgres`
-- `connect`
-
-### 3. Initialize MongoDB Replica Set
+### 1. Configure MongoDB
 
 ```bash
-docker exec mongodb mongosh --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})"
-```
-
-**Wait ~10 seconds** for replica set to initialize.
-
-### 4. Setup Connectors
-
-```bash
-./setup-connectors.sh
+./setup-brew-mongo.sh
 ```
 
 This will:
-- Register MongoDB Source Connector
-- Register MongoDB Audit Sink Connector
-- Show connector status
+- Check MongoDB installation
+- Configure replica set
+- Start MongoDB service
 
-### 5. Verify Everything is Running
+### 2. Start Docker Services & Setup Everything
 
 ```bash
+./fresh-setup.sh
+```
+
+This will:
+- Check Homebrew MongoDB is running
+- Start Docker services (Kafka, Postgres, Connect)
+- Register connectors
+- Run a test
+
+**Total time: ~2-3 minutes**
+
+### 3. Verify Everything is Running
+
+```bash
+# Check Homebrew MongoDB
+brew services list | grep mongodb
+
+# Check connectors
 curl -s http://localhost:8083/connectors | jq .
 ```
 
@@ -107,25 +110,25 @@ This runs a complete test:
 
 #### Step 1: Insert Initial Data
 ```bash
-docker exec mongodb mongosh shop --eval \
+mongosh localhost:27017/shop --eval \
   'db.customers.insertOne({_id: 1, name: "Mukesh", location: "Hyd", department: "Engineering"})'
 ```
 
 #### Step 2: Update Some Fields
 ```bash
-docker exec mongodb mongosh shop --eval \
+mongosh localhost:27017/shop --eval \
   'db.customers.updateOne({_id: 1}, {$set: {name: "Ritu", department: "Sales"}})'
 ```
 
 #### Step 3: Update Other Fields
 ```bash
-docker exec mongodb mongosh shop --eval \
+mongosh localhost:27017/shop --eval \
   'db.customers.updateOne({_id: 1}, {$set: {location: "Bangalore"}})'
 ```
 
 #### Step 4: Check Audit Trail (SEE THE DIFFS!)
 ```bash
-docker exec mongodb mongosh auditdb --eval '
+mongosh localhost:27017/auditdb --eval '
 db.changes.find({"documentKey._id": 1}).sort({clusterTime: 1}).forEach(function(doc) {
   print("\n--- " + doc.operationType.toUpperCase() + " ---");
   print("Time: " + doc.wallTime);
@@ -167,31 +170,31 @@ Run this for a comprehensive demo with INSERT, UPDATE, and DELETE:
 
 ```bash
 # Insert
-docker exec mongodb mongosh shop --eval \
+mongosh localhost:27017 shop --eval \
   'db.customers.insertOne({_id: 100, name: "John", age: 30, city: "Mumbai", dept: "Sales"})'
 
 sleep 3
 
 # Update 1: Change name and age
-docker exec mongodb mongosh shop --eval \
+mongosh localhost:27017 shop --eval \
   'db.customers.updateOne({_id: 100}, {$set: {name: "Johnny", age: 31}})'
 
 sleep 3
 
 # Update 2: Change city and dept
-docker exec mongodb mongosh shop --eval \
+mongosh localhost:27017 shop --eval \
   'db.customers.updateOne({_id: 100}, {$set: {city: "Delhi", dept: "Engineering"}})'
 
 sleep 3
 
 # Delete
-docker exec mongodb mongosh shop --eval \
+mongosh localhost:27017 shop --eval \
   'db.customers.deleteOne({_id: 100})'
 
 sleep 3
 
 # View complete audit trail
-docker exec mongodb mongosh auditdb --eval '
+mongosh localhost:27017 auditdb --eval '
 db.changes.find({"documentKey._id": 100}).sort({clusterTime: 1}).forEach(function(doc) {
   print("\n=== " + doc.operationType.toUpperCase() + " ===");
   print("Timestamp: " + doc.wallTime);
@@ -214,12 +217,12 @@ db.changes.find({"documentKey._id": 100}).sort({clusterTime: 1}).forEach(functio
 
 ### View All Audit Events
 ```bash
-docker exec mongodb mongosh auditdb --eval 'db.changes.find().pretty()'
+mongosh localhost:27017 auditdb --eval 'db.changes.find().pretty()'
 ```
 
 ### View Only Updates (with diffs)
 ```bash
-docker exec mongodb mongosh auditdb --eval '
+mongosh localhost:27017 auditdb --eval '
 db.changes.find({operationType: "update"}).forEach(function(doc) {
   print("ID: " + doc.documentKey._id);
   print("DIFF: " + JSON.stringify(doc.updateDescription.updatedFields));
@@ -230,14 +233,14 @@ db.changes.find({operationType: "update"}).forEach(function(doc) {
 
 ### Get Audit History for Specific Document
 ```bash
-docker exec mongodb mongosh auditdb --eval '
+mongosh localhost:27017 auditdb --eval '
 db.changes.find({"documentKey._id": 1}).sort({clusterTime: 1}).pretty()
 '
 ```
 
 ### Count Events by Type
 ```bash
-docker exec mongodb mongosh auditdb --eval '
+mongosh localhost:27017 auditdb --eval '
 db.changes.aggregate([
   {$group: {_id: "$operationType", count: {$sum: 1}}},
   {$sort: {count: -1}}
@@ -283,10 +286,10 @@ docker exec debezium-lab-kafka-1 kafka-console-consumer \
 ### Check MongoDB Collections
 ```bash
 # Source collection
-docker exec mongodb mongosh shop --eval 'db.customers.find().pretty()'
+mongosh localhost:27017 shop --eval 'db.customers.find().pretty()'
 
 # Audit collection
-docker exec mongodb mongosh auditdb --eval 'db.changes.find().pretty()'
+mongosh localhost:27017 auditdb --eval 'db.changes.find().pretty()'
 ```
 
 ### View Connector Logs
@@ -398,8 +401,8 @@ docker-compose down -v
 
 ### Remove Only Audit Data
 ```bash
-docker exec mongodb mongosh auditdb --eval 'db.dropDatabase()'
-docker exec mongodb mongosh shop --eval 'db.customers.drop()'
+mongosh localhost:27017 auditdb --eval 'db.dropDatabase()'
+mongosh localhost:27017 shop --eval 'db.customers.drop()'
 ```
 
 ---
@@ -456,7 +459,7 @@ sudo yum install jq
 
 ### Create Indexes on Audit Collection
 ```bash
-docker exec mongodb mongosh auditdb --eval '
+mongosh localhost:27017 auditdb --eval '
 // Index for document lookups
 db.changes.createIndex({"documentKey._id": 1, "clusterTime": 1});
 
@@ -483,7 +486,7 @@ See `TROUBLESHOOTING.md` for detailed troubleshooting guide.
 
 **MongoDB Replica Set Not Initialized:**
 ```bash
-docker exec mongodb mongosh --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})"
+mongosh localhost:27017 --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})"
 ```
 
 **Kafka Connect Not Ready:**
@@ -516,7 +519,7 @@ sleep 15
 # Start everything
 docker-compose up -d
 sleep 20
-docker exec mongodb mongosh --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})"
+mongosh localhost:27017 --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})"
 sleep 10
 ./setup-connectors.sh
 
@@ -524,11 +527,11 @@ sleep 10
 ./test-flow.sh
 
 # Or manual test
-docker exec mongodb mongosh shop --eval 'db.customers.insertOne({_id: 1, name: "Mukesh", city: "Hyd"})'
+mongosh localhost:27017 shop --eval 'db.customers.insertOne({_id: 1, name: "Mukesh", city: "Hyd"})'
 sleep 3
-docker exec mongodb mongosh shop --eval 'db.customers.updateOne({_id: 1}, {$set: {name: "Ritu"}})'
+mongosh localhost:27017 shop --eval 'db.customers.updateOne({_id: 1}, {$set: {name: "Ritu"}})'
 sleep 3
-docker exec mongodb mongosh auditdb --eval 'db.changes.find({"documentKey._id": 1}).pretty()'
+mongosh localhost:27017 auditdb --eval 'db.changes.find({"documentKey._id": 1}).pretty()'
 ```
 
 **The audit trail will show: DIFF = `{"name": "Ritu"}`** ✨
