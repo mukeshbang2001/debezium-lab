@@ -406,7 +406,9 @@ docker exec mongodb mongosh shop --eval 'db.customers.drop()'
 
 ## Prerequisites
 
-- Docker & Docker Compose
+- **Docker Desktop** installed (includes Docker Compose)
+  - On Apple Silicon Mac, use Docker Desktop 4.x+
+  - Supports both `docker compose` (new) and `docker-compose` (legacy)
 - `curl` (for API calls)
 - `jq` (for JSON formatting) - optional but recommended
 
